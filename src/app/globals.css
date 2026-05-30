@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════
+   BOSTA DESIGN SYSTEM — Customer Web
+   Matches the Owner/Barber App exactly
+═══════════════════════════════════════ */
+
+@theme {
+  /* Fonts */
+  --font-sans: var(--font-cairo), 'Cairo', sans-serif;
+  --font-heading: var(--font-cairo), 'Cairo', sans-serif;
+
+  /* Brand — Red (mirrors app primary) */
+  --color-brand:        #E8192C;
+  --color-brand-dark:   #C0102A;
+  --color-brand-light:  #FDECEA;
+  --color-brand-border: #F5A3AA;
+
+  /* Teal accent */
+  --color-teal:       #5EC8C0;
+  --color-teal-dark:  #2FA8A0;
+  --color-teal-light: #E8F8F7;
+
+  /* Neutrals */
+  --color-gray-50:  #F7F8FA;
+  --color-gray-100: #F0F1F3;
+  --color-gray-200: #E2E4E8;
+  --color-gray-400: #9EA3AE;
+  --color-gray-600: #5A5F6B;
+  --color-gray-800: #2D3142;
+  --color-gray-900: #1A1D2E;
+
+  /* Semantic */
+  --color-success:       #1A7A35;
+  --color-success-light: #EAF3DE;
+  --color-warning:       #E65100;
+
+  /* Backgrounds */
+  --color-bg-page:    #F7F8FA;
+  --color-bg-card:    #FFFFFF;
+  --color-bg-section: #F0F1F3;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-card:     0 1px 4px rgba(26, 29, 46, 0.08), 0 4px 16px rgba(26, 29, 46, 0.06);
+  --shadow-elevated: 0 4px 24px rgba(26, 29, 46, 0.12);
+  --shadow-modal:    0 8px 40px rgba(26, 29, 46, 0.18);
+}
+
+/* ── Base ── */
+html {
+  direction: rtl;
+}
+
+body {
+  background-color: var(--color-bg-page);
+  color: var(--color-gray-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-gray-900);
+}
+
+/* ── Utilities ── */
+@layer utilities {
+  /* Cards */
+  .card {
+    background-color: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--color-gray-200);
+  }
+
+  .card-hover {
+    transition: box-shadow 200ms, border-color 200ms, transform 200ms;
+  }
+
+  .card-hover:hover {
+    box-shadow: var(--shadow-elevated);
+    border-color: var(--color-brand);
+    transform: translateY(-2px);
+  }
+
+  /* Inputs */
+  .input-base {
+    width: 100%;
+    padding: 12px 16px;
+    background-color: var(--color-gray-50);
+    border: 1.5px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    color: var(--color-gray-900);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    transition: border-color 150ms, background-color 150ms;
+    outline: none;
+  }
+
+  .input-base:focus {
+    border-color: var(--color-brand);
+    background-color: #FFFFFF;
+  }
+
+  .input-base::placeholder {
+    color: var(--color-gray-400);
+  }
+
+  /* Buttons */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--color-brand), var(--color-brand-dark));
+    color: #ffffff;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    padding: 14px 24px;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: opacity 150ms, transform 100ms;
+    width: 100%;
+    font-size: 15px;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.9;
+  }
+
+  .btn-primary:active {
+    transform: scale(0.99);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    background-color: var(--color-gray-100);
+    color: var(--color-gray-800);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    padding: 14px 24px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-gray-200);
+    cursor: pointer;
+    transition: background-color 150ms;
+    width: 100%;
+    font-size: 15px;
+  }
+
+  .btn-secondary:hover {
+    background-color: var(--color-gray-200);
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .badge-success {
+    background-color: var(--color-success-light);
+    color: var(--color-success);
+  }
+
+  .badge-brand {
+    background-color: var(--color-brand-light);
+    color: var(--color-brand);
+  }
+
+  .badge-neutral {
+    background-color: var(--color-gray-100);
+    color: var(--color-gray-600);
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background-color: var(--color-gray-100);
+    margin: 16px 0;
+  }
+
+  /* Scrollbar hide */
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ── Mobile touch improvements ── */
+@media (max-width: 639px) {
+  /* Bigger tap targets */
+  .btn-primary, .btn-secondary {
+    min-height: 52px;
+    font-size: 16px; /* prevent iOS zoom on focus */
+  }
+
+  .input-base {
+    font-size: 16px; /* prevent iOS zoom on focus */
+    min-height: 52px;
+  }
+
+  /* Cards take full width on mobile */
+  .card {
+    border-radius: 16px;
+  }
+}
+
+/* ── Prevent layout shift ── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth page transitions */
+main {
+  animation: fadeIn 150ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Safe area for notched phones */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  nav.fixed.bottom-0 {
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
