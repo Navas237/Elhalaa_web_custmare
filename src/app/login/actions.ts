@@ -4,6 +4,32 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
+const EGYPT_PHONE_REGEX = /^(010|011|012|015)\d{8}$/
+
+function getSignupErrorCode(error: { message?: string; code?: string; status?: number }) {
+  const message = error.message?.toLowerCase() ?? ''
+
+  if (
+    error.status === 429 ||
+    error.code === 'over_email_send_rate_limit' ||
+    message.includes('rate limit')
+  ) {
+    return 'email_rate_limit'
+  }
+
+  if (
+    error.status === 422 ||
+    error.code === 'user_already_exists' ||
+    message.includes('already') ||
+    message.includes('registered') ||
+    message.includes('exists')
+  ) {
+    return 'email_taken'
+  }
+
+  return 'signup_failed'
+}
+
 export async function login(formData: FormData) {
   const supabase = await createClient()
 
@@ -29,12 +55,11 @@ export async function login(formData: FormData) {
 export async function signup(formData: FormData) {
   const supabase = await createClient()
 
-  const email    = (formData.get('email') as string)?.trim().toLowerCase()
+  const email = (formData.get('email') as string)?.trim().toLowerCase()
   const password = formData.get('password') as string
   const fullName = (formData.get('name') as string)?.trim()
-  const phone    = (formData.get('phone') as string)?.trim()
+  const phone = (formData.get('phone') as string)?.trim()
 
-  // Server-side validation
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     redirect('/register?error=invalid_email')
   }
@@ -44,7 +69,7 @@ export async function signup(formData: FormData) {
   if (!fullName || fullName.length < 2) {
     redirect('/register?error=invalid_name')
   }
-  if (!phone || !/^(05|06|07)\d{8}$/.test(phone)) {
+  if (!phone || !EGYPT_PHONE_REGEX.test(phone)) {
     redirect('/register?error=invalid_phone')
   }
 
@@ -57,25 +82,33 @@ export async function signup(formData: FormData) {
   })
 
   if (error) {
-    redirect('/register?error=email_taken')
+    console.error('Signup failed:', error)
+    redirect(`/register?error=${getSignupErrorCode(error)}`)
   }
 
   if (authData.user) {
     const { error: profileError } = await supabase.from('profiles').insert({
       id: authData.user.id,
+      email: email,
       name: fullName,
-      phone: phone,
+      phone,
       role: 'client',
     })
 
     if (profileError) {
       console.error('Profile insert failed:', profileError)
-      // Continue — user can complete profile later, but log for monitoring
+      const redirectTo = formData.get('redirect') as string | null
+      if (redirectTo) {
+        redirect(`/register?redirect=${encodeURIComponent(redirectTo)}&error=profile_failed`)
+      } else {
+        redirect('/register?error=profile_failed')
+      }
     }
   }
 
   revalidatePath('/', 'layout')
-  redirect('/')
+  const redirectTo = formData.get('redirect') as string | null
+  redirect(redirectTo || '/')
 }
 
 export async function signOut() {

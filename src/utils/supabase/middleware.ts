@@ -39,7 +39,9 @@ export async function updateSession(request: NextRequest) {
   if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirect', pathname)
+    // Preserve the full original URL (including query params) so the booking flow can be restored
+    const redirectTarget = request.nextUrl.pathname + request.nextUrl.search
+    url.searchParams.set('redirect', redirectTarget)
     return NextResponse.redirect(url)
   }
 

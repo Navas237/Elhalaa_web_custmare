@@ -86,14 +86,31 @@ export async function createBooking(formData: FormData) {
   }
 
   // ── Fetch profile for name / phone ──
-  const { data: profile } = await supabase
+  let { data: profile } = await supabase
     .from('profiles')
     .select('name, phone')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
+
+  // If profile is missing (e.g. signup interrupted), try to create one to satisfy FK constraint
+  if (!profile) {
+    const { data: newProfile, error: profileCreateError } = await supabase.from('profiles').insert({
+      id: user.id,
+      email: user.email || '',
+      name: user.user_metadata?.full_name || user.user_metadata?.name || 'عميل',
+      phone: user.user_metadata?.phone || null,
+      role: 'client'
+    }).select('name, phone').single()
+
+    if (profileCreateError) {
+      console.error('Failed to auto-create missing profile:', profileCreateError)
+      return { success: false, code: 'PROFILE_MISSING', message: 'حسابك غير مكتمل، يرجى التواصل مع الدعم أو تسجيل حساب جديد.' }
+    }
+    profile = newProfile
+  }
 
   // ── Server-side insert with trusted auth.uid() ──
-  const { data: booking, error: insertError } = await supabase
+  const { data: bookings, error: insertError } = await supabase
     .from('bookings_v2')
     .insert({
       shop_id: shopId,
@@ -110,22 +127,53 @@ export async function createBooking(formData: FormData) {
       payment_method: 'cash',
     })
     .select()
-    .single()
+
+  const booking = bookings?.[0]
 
   if (insertError) {
-    // Parse known errors from triggers
-    const msg = insertError.message || ''
-    if (msg.includes('PENDING_BOOKING_EXISTS') || msg.includes('pending booking')) {
+    // Build a single string from all error fields for robust matching
+    const raw = [
+      insertError.message,
+      insertError.details,
+      insertError.hint,
+      insertError.code,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+
+    if (
+      raw.includes('pending_booking_exists') ||
+      raw.includes('pending booking') ||
+      raw.includes('active unconfirmed booking')
+    ) {
       return {
         success: false,
         code: 'PENDING_BOOKING_EXISTS',
         message: 'لديك حجز في الانتظار بالفعل لا يمكنك اضافه حجز اخر',
       }
     }
-    if (msg.includes('overlap') || msg.includes('Booking overlap') || insertError.code === 'P0001') {
-      return { success: false, code: 'SLOT_TAKEN', message: 'عذراً، هذا الموعد تم حجزه للتو. يرجى اختيار وقت آخر.' }
+
+    if (
+      raw.includes('overlap') ||
+      raw.includes('booking overlap') ||
+      raw.includes('double booking') ||
+      insertError.code === 'P0001'
+    ) {
+      return {
+        success: false,
+        code: 'SLOT_TAKEN',
+        message: 'عذراً، هذا الموعد تم حجزه للتو. يرجى اختيار وقت آخر.',
+      }
     }
-    return { success: false, code: 'INSERT_FAILED', message: 'حدث خطأ أثناء الحجز. حاول مرة أخرى.' }
+
+    // Log unknown errors for debugging
+    console.error('Booking insert failed:', insertError)
+    return {
+      success: false,
+      code: 'INSERT_FAILED',
+      message: 'حدث خطأ أثناء الحجز. حاول مرة أخرى.',
+    }
   }
 
   return { success: true, booking }

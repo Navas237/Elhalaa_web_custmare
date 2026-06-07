@@ -18,7 +18,7 @@ export default function ServicesLoading() {
               <div className="h-4 w-1/2 rounded" style={{ backgroundColor: 'var(--color-gray-100)' }} />
               <div className="h-3 w-1/4 rounded" style={{ backgroundColor: 'var(--color-gray-100)' }} />
             </div>
-            <div className="text-left">
+            <div className="text-start">
               <div className="h-6 w-12 rounded mb-1" style={{ backgroundColor: 'var(--color-gray-200)' }} />
               <div className="h-3 w-8 rounded" style={{ backgroundColor: 'var(--color-gray-100)' }} />
             </div>

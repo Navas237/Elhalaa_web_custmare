@@ -9,10 +9,13 @@ type ShopImageProps = {
   alt: string
 }
 
+const BROKEN_IMAGE_IDS = ['photo-1615996001375-9684c3f6b4bd']
+
 export function ShopImage({ src, alt }: ShopImageProps) {
   const [failed, setFailed] = useState(false)
+  const isKnownBrokenImage = BROKEN_IMAGE_IDS.some((id) => src?.includes(id))
 
-  if (!src || failed) {
+  if (!src || failed || isKnownBrokenImage) {
     return <Scissors className="w-7 h-7 text-white" aria-hidden="true" />
   }
 

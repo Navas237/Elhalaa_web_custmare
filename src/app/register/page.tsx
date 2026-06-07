@@ -7,16 +7,19 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_email: 'البريد الإلكتروني غير صالح.',
   weak_password: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.',
   invalid_name: 'الاسم الكامل مطلوب.',
-  invalid_phone: 'رقم الهاتف يجب أن يبدأ بـ 05 أو 06 أو 07 ويتكون من 10 أرقام.',
+  invalid_phone: 'رقم الهاتف يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقم.',
   invalid_credentials: 'فشل التسجيل، يرجى المحاولة مرة أخرى.',
+  email_rate_limit: 'تم إرسال طلبات تأكيد كثيرة خلال وقت قصير. انتظر دقيقة ثم حاول مرة أخرى.',
+  profile_failed: 'تم إنشاء الحساب، لكن تعذر حفظ بيانات الملف الشخصي. يرجى التواصل معنا لإكمال الحساب.',
+  signup_failed: 'تعذر إنشاء الحساب الآن. يرجى المحاولة مرة أخرى.',
 }
 
 interface Props {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; redirect?: string }>
 }
 
 export default async function RegisterPage({ searchParams }: Props) {
-  const { error } = await searchParams
+  const { error, redirect: redirectTo } = await searchParams
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? 'حدث خطأ، يرجى المحاولة مرة أخرى.') : null
 
   return (
@@ -63,9 +66,13 @@ export default async function RegisterPage({ searchParams }: Props) {
         )}
 
         <form className="flex flex-col gap-4">
+          {/* Pass redirect destination through the form */}
+          {redirectTo && (
+            <input type="hidden" name="redirect" value={redirectTo} />
+          )}
           {[
             { id: 'name',     label: 'الاسم الكامل',        type: 'text',     placeholder: 'محمد أحمد',       dir: 'rtl' },
-            { id: 'phone',    label: 'رقم الهاتف',           type: 'tel',      placeholder: '05xxxxxxxx',      dir: 'ltr' },
+            { id: 'phone',    label: 'رقم الهاتف',           type: 'tel',      placeholder: '010xxxxxxxx',     dir: 'ltr', pattern: '^(010|011|012|015)[0-9]{8}$' },
             { id: 'email',    label: 'البريد الإلكتروني',   type: 'email',    placeholder: 'example@email.com', dir: 'ltr' },
             { id: 'password', label: 'كلمة المرور',          type: 'password', placeholder: '٨ أحرف على الأقل', dir: 'ltr' },
           ].map((field) => (
@@ -84,6 +91,7 @@ export default async function RegisterPage({ searchParams }: Props) {
                 type={field.type}
                 placeholder={field.placeholder}
                 dir={field.dir as 'ltr' | 'rtl'}
+                pattern={field.pattern}
                 required
               />
             </div>
@@ -96,7 +104,11 @@ export default async function RegisterPage({ searchParams }: Props) {
 
         <div className="mt-6 text-center text-sm" style={{ color: 'var(--color-gray-600)' }}>
           لديك حساب بالفعل؟{' '}
-          <Link href="/login" className="font-bold" style={{ color: 'var(--color-brand)' }}>
+          <Link
+            href={redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : '/login'}
+            className="font-bold"
+            style={{ color: 'var(--color-brand)' }}
+          >
             تسجيل الدخول
           </Link>
         </div>

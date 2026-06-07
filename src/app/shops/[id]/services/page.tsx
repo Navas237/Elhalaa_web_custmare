@@ -28,11 +28,9 @@ export default async function ServicesPage({ params, searchParams }: Props) {
 
   const [
     { data: shop },
-    { data: barber },
     { data: services },
   ] = await Promise.all([
-    supabase.from('shops_v2').select('name').eq('id', shopId).single(),
-    supabase.from('shop_staff').select('profiles(name)').eq('id', barberId).single(),
+    supabase.from('shops_v2').select('name').eq('id', shopId).maybeSingle(),
     supabase.from('services').select('*').eq('shop_id', shopId).eq('is_active', true).order('display_order'),
   ])
 
@@ -66,7 +64,7 @@ export default async function ServicesPage({ params, searchParams }: Props) {
           اختر الخدمة
         </h1>
         <p style={{ color: 'var(--color-gray-600)' }}>
-          مع {(barber as any)?.profiles?.name || 'الحلاق'} &mdash; {shop?.name}
+          مع الحلاق &mdash; {shop?.name}
         </p>
       </div>
 
@@ -128,7 +126,7 @@ export default async function ServicesPage({ params, searchParams }: Props) {
                     </div>
 
                     {/* Price */}
-                    <div className="text-left shrink-0">
+                    <div className="text-start shrink-0">
                       <p
                         className="text-lg font-extrabold"
                         style={{ color: 'var(--color-brand)', fontFamily: 'var(--font-heading)' }}

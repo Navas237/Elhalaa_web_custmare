@@ -17,16 +17,15 @@ export default async function BookingSuccessPage({ searchParams }: Props) {
       .select(`
         *,
         shops_v2(name, address),
-        shop_staff(profiles(name)),
         services(name, duration_minutes)
       `)
       .eq('id', bookingId)
-      .single()
+      .maybeSingle()
     booking = data
   }
 
   const shopName = booking?.shops_v2?.name
-  const barberName = booking?.shop_staff?.profiles?.name
+  const barberName = 'الحلاق'
   const serviceName = booking?.services?.name
   const bookingDate = booking?.booking_date
   const startTime = booking?.start_time?.slice(0, 5)
@@ -72,7 +71,7 @@ export default async function BookingSuccessPage({ searchParams }: Props) {
         {/* Booking details card */}
         {booking && (
           <div
-            className="rounded-xl p-5 mb-6 text-right text-sm space-y-2"
+            className="rounded-xl p-5 mb-6 text-start text-sm space-y-2"
             style={{
               backgroundColor: 'var(--color-gray-50)',
               border: '1px solid var(--color-gray-200)',

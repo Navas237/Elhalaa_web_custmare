@@ -15,6 +15,10 @@ GRANT SELECT ON public.shop_staff TO anon;
 GRANT SELECT ON public.shop_staff TO authenticated;
 
 -- Step 2: Ensure shops_v2 is publicly readable (for branch discovery)
+-- Table-level grants are required before RLS policies can allow reads.
+GRANT SELECT ON public.shops_v2 TO anon;
+GRANT SELECT ON public.shops_v2 TO authenticated;
+
 -- Check if a public SELECT policy already exists, if not create one
 DO $$
 BEGIN
@@ -31,6 +35,9 @@ BEGIN
 END $$;
 
 -- Step 3: Ensure services are publicly readable (for service listing)
+GRANT SELECT ON public.services TO anon;
+GRANT SELECT ON public.services TO authenticated;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -62,6 +69,40 @@ END $$;
 -- Step 5: Ensure profiles are readable for display names
 GRANT SELECT ON public.profiles TO anon;
 GRANT SELECT ON public.profiles TO authenticated;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'profiles'
+    AND policyname = 'profiles_read_own'
+  ) THEN
+    CREATE POLICY profiles_read_own ON public.profiles
+      FOR SELECT
+      USING (id = auth.uid());
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'profiles'
+    AND policyname = 'profiles_insert_own'
+  ) THEN
+    CREATE POLICY profiles_insert_own ON public.profiles
+      FOR INSERT
+      WITH CHECK (id = auth.uid());
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'profiles'
+    AND policyname = 'profiles_update_own'
+  ) THEN
+    CREATE POLICY profiles_update_own ON public.profiles
+      FOR UPDATE
+      USING (id = auth.uid())
+      WITH CHECK (id = auth.uid());
+  END IF;
+END $$;
 
 -- Step 6: Ensure working_hours is readable for slot availability
 GRANT SELECT ON public.working_hours TO anon;

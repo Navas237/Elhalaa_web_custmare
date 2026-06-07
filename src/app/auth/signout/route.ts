@@ -1,12 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const supabase = await createClient()
   await supabase.auth.signOut()
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl) {
-    console.error('NEXT_PUBLIC_APP_URL is not set')
-  }
-  return NextResponse.redirect(new URL('/login', appUrl || 'http://localhost:3000'))
+  // Use request.url so redirect works correctly in any environment (dev, preview, production)
+  return NextResponse.redirect(new URL('/login', request.url))
 }

@@ -94,8 +94,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               )}
             </nav>
 
-            {/* Mobile: show auth button only on small screens in header */}
-            <div className="flex sm:hidden">
+            {/* Mobile header controls */}
+            <div className="flex sm:hidden items-center gap-2">
+              <button
+                type="button"
+                data-testid="mobile-menu-toggle"
+                aria-label="القائمة"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                style={{ color: 'var(--color-gray-600)', backgroundColor: 'var(--color-gray-100)' }}
+              >
+                ☰
+              </button>
               {user ? (
                 <Link
                   href="/profile"
@@ -132,21 +141,24 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         {/* ── Mobile Bottom Navigation ── */}
         <nav
+          data-testid="bottom-navigation"
           className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t"
           style={{ borderColor: 'var(--color-gray-200)' }}
         >
           <div className="grid grid-cols-4 h-16">
             {[
-              { href: '/',        icon: <Home className="w-5 h-5" />,         label: 'الرئيسية' },
-              { href: '/shops',   icon: <Store className="w-5 h-5" />,        label: 'الفروع'   },
-              { href: '/booking', icon: <CalendarCheck className="w-5 h-5" />, label: 'احجز'    },
+              { href: '/',        icon: <Home className="w-5 h-5" />,         label: 'الرئيسية', testId: 'nav-home' },
+              { href: '/shops',   icon: <Store className="w-5 h-5" />,        label: 'الفروع',   testId: 'nav-shops' },
+              { href: '/shops',   icon: <CalendarCheck className="w-5 h-5" />, label: 'احجز',    testId: 'nav-booking' },
               { href: user ? '/profile' : '/login',
                 icon: <User className="w-5 h-5" />,
-                label: user ? 'حسابي' : 'دخول' },
+                label: user ? 'حجوزاتي' : 'دخول',
+                testId: 'nav-profile' },
             ].map((item) => (
               <Link
-                key={item.href}
+                key={item.href + item.label}
                 href={item.href}
+                data-testid={item.testId}
                 className="flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors active:opacity-70"
                 style={{ color: 'var(--color-gray-400)' }}
               >
