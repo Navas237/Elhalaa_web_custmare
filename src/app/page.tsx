@@ -1,7 +1,13 @@
 import Link from 'next/link'
 import { Scissors, CalendarCheck, Star, Clock } from 'lucide-react'
+import { getTenant } from '@/utils/tenant'
 
-export default function Home() {
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+export default async function Home() {
+  const tenant = await getTenant()
+
   return (
     <div>
       {/* ── Hero ── */}
@@ -11,19 +17,20 @@ export default function Home() {
           style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)' }}
         >
           <Scissors className="w-4 h-4" />
-          منصة حجز صالونات الحلاقة
+          {tenant.branding.badge_text || `${tenant.name} للحلاقة`}
         </div>
 
-        {/* <h1
+        <h1
           className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight"
           style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-gray-900)' }}
         >
-          احجز موعدك في <br />
-          <span style={{ color: 'var(--color-brand)' }}>أرقى صالون</span> بالمنطقة
-        </h1> */}
+          {tenant.branding.hero_title || 'احجز موعدك في'} <br />
+          <span style={{ color: 'var(--color-brand)' }}>{tenant.name}</span>
+          {tenant.branding.tagline ? ` — ${tenant.branding.tagline}` : ' — أرقى صالون بالمنطقة'}
+        </h1>
 
         <p className="text-lg md:text-xl mb-10 max-w-xl mx-auto" style={{ color: 'var(--color-gray-600)' }}>
-          اختر حلاقك المفضل، وحدد الخدمة والوقت المناسب — كل ذلك في أقل من دقيقة.
+          {tenant.branding.description || 'اختر حلاقك المفضل، وحدد الخدمة والوقت المناسب — كل ذلك في أقل من دقيقة.'}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -35,42 +42,8 @@ export default function Home() {
             <CalendarCheck className="w-5 h-5" />
             احجز الآن
           </Link>
-          {/* <Link
-            href="/register"
-            className="inline-flex items-center gap-2 font-semibold px-8 py-4 rounded-xl text-base cursor-pointer transition-colors border"
-            style={{
-              color: 'var(--color-gray-800)',
-              borderColor: 'var(--color-gray-200)',
-              backgroundColor: 'var(--color-bg-card)',
-            }}
-          >
-            إنشاء حساب مجاني
-          </Link> */}
         </div>
       </section>
-
-      {/* ── Stats strip ── */}
-      {/* <section style={{ backgroundColor: 'var(--color-bg-card)', borderTop: '1px solid var(--color-gray-200)', borderBottom: '1px solid var(--color-gray-200)' }}>
-        <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-3 gap-8 text-center">
-          {[
-            { value: '+١٠', label: 'فروع' },
-            { value: '+٥٠٠', label: 'حجز ناجح' },
-            { value: '٤.٩', label: 'متوسط التقييم' },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div
-                className="text-3xl md:text-4xl font-extrabold mb-1"
-                style={{ color: 'var(--color-brand)', fontFamily: 'var(--font-heading)' }}
-              >
-                {stat.value}
-              </div>
-              <div className="text-sm font-medium" style={{ color: 'var(--color-gray-600)' }}>
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section> */}
 
       {/* ── How it works ── */}
       <section className="max-w-5xl mx-auto px-4 py-16">
@@ -86,7 +59,7 @@ export default function Home() {
               step: '١',
               icon: <Scissors className="w-6 h-6" />,
               title: 'اختر الفرع',
-              desc: 'تصفح قائمة الفروع القريبة منك واختر ما يناسبك',
+              desc: `تصفح فروع ${tenant.name} واختر الفرع الأقرب إليك`,
             },
             {
               step: '٢',
@@ -156,3 +129,4 @@ export default function Home() {
     </div>
   )
 }
+

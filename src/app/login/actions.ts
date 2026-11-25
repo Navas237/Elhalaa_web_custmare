@@ -33,12 +33,21 @@ function getSignupErrorCode(error: { message?: string; code?: string; status?: n
 export async function login(formData: FormData) {
   const supabase = await createClient()
 
+  // Normalize like signup does: keyboards/autofill often add a trailing
+  // space or capital letters, which Supabase rejects with "Invalid login
+  // credentials" even though the user typed the right address.
+  const email = ((formData.get('email') as string) ?? '').trim().toLowerCase()
+  const password = formData.get('password') as string
+
   const { error } = await supabase.auth.signInWithPassword({
-    email: formData.get('email') as string,
-    password: formData.get('password') as string,
+    email,
+    password,
   })
 
   if (error) {
+    // Log the real reason server-side; the UI keeps the generic message
+    // so we don't leak which part (email vs password) was wrong.
+    console.error('Login failed:', error.code ?? error.status, error.message)
     const redirectTo = formData.get('redirect') as string | null
     if (redirectTo) {
       redirect(`/login?redirect=${encodeURIComponent(redirectTo)}&error=invalid_credentials`)

@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback, useMemo } from 'react'
+import { useState, useEffect, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { ChevronLeft, CalendarDays, Clock, Loader2, Check, Scissors, Star } from 'lucide-react'
 import { createBooking } from './actions'
-import { log } from 'console'
+import { getFilteredPeriods, ALL_PERIODS } from '@/utils/period-filter'
 
 // ── Time formatting helpers ──
 function timeStrToMinutes(timeStr: string): number {
@@ -64,19 +64,46 @@ function BookingContent() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // Calculate filtered periods based on shop opening/closing hours and selectedDate
+  const filteredPeriods = useMemo(() => {
+    return getFilteredPeriods({
+      openingTime: shop?.opening_time,
+      closingTime: shop?.closing_time,
+      targetDate: selectedDate,
+    })
+  }, [shop?.opening_time, shop?.closing_time, selectedDate])
+
+  // Auto-select first available period if selectedPeriod is no longer valid
+  useEffect(() => {
+    if (filteredPeriods.length > 0) {
+      const isValid = filteredPeriods.some((p) => p.id === selectedPeriod)
+      if (!isValid) {
+        setSelectedPeriod(filteredPeriods[0].id)
+      }
+    }
+  }, [filteredPeriods, selectedPeriod])
+
   // Get server date once on mount
   useEffect(() => {
     ;(async () => {
-      const { data: timeData } = await supabase.rpc('get_server_time', {
-        p_timezone: 'Africa/Cairo',
-      })
-      const date = timeData?.[0]?.server_date
-      if (date) {
-        setServerDate(date)
-        setSelectedDate(date)
-      } else {
-        setError('تعذر تحميل الوقت من الخادم. يرجى تحديث الصفحة.')
+      try {
+        const { data: timeData } = await supabase.rpc('get_server_time', {
+          p_timezone: 'Africa/Cairo',
+        })
+        const date = timeData?.[0]?.server_date
+        if (date) {
+          setServerDate(date)
+          setSelectedDate(date)
+          return
+        }
+      } catch (err) {
+        console.warn('Could not fetch server time, using local client time:', err)
       }
+
+      // Fallback: تاريخ اليوم المحلي بتوقيت القاهرة
+      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date())
+      setServerDate(localDate)
+      setSelectedDate(localDate)
     })()
   }, [supabase])
 
@@ -118,13 +145,18 @@ function BookingContent() {
     })()
   }, [shopId, barberId, serviceId, router, supabase])
 
-  // Load available slots from server-side Smart Booking Engine
+  // Load available slots from the optimized smart-booking-slots Edge Function (v64:
+  // batched lookups, no N+1 — same slot engine the users already know).
   const serviceDuration = service?.duration_minutes ?? service?.duration ?? 30
+  const requestIdRef = useRef(0)
   const loadSlots = useCallback(async () => {
     if (!selectedDate || !service || !barberId) return
+    const requestId = ++requestIdRef.current
     setSlotsLoading(true)
     setSelectedSlot(null)
     setAiMessage('')
+
+    const periodObj = ALL_PERIODS.find((p) => p.id === selectedPeriod)
 
     const { data, error: rpcError } = await supabase.functions.invoke('smart-booking-slots', {
       body: {
@@ -132,17 +164,21 @@ function BookingContent() {
         staff_id: barberId,
         service_id: serviceId,
         target_date: selectedDate,
-        time_preference: { period: selectedPeriod },
+        time_preference: {
+          period: selectedPeriod,
+          from: periodObj?.startTime,
+          to: periodObj?.endTime,
+          start_time: periodObj?.startTime,
+          end_time: periodObj?.endTime,
+        },
+        p_period_start_time: periodObj?.startTime,
+        p_period_end_time: periodObj?.endTime,
         service_duration: serviceDuration
       }
     })
 
-  console.log(data
-
-
-    
-  );
-  
+    // Ignore stale responses when date/period changed mid-flight
+    if (requestId !== requestIdRef.current) return
 
     if (rpcError || !data?.success) {
       console.error('smart-booking-slots error:', rpcError || data?.error)
@@ -152,7 +188,7 @@ function BookingContent() {
     }
 
     const staffResult = data.staff_results?.[0]
-    
+
     if (staffResult?.message) {
       setAiMessage(staffResult.message)
     }
@@ -162,14 +198,31 @@ function BookingContent() {
       display_start_arabic: formatArabicTime(slot.display_start_time || slot.start_time),
       actual_start_time: slot.actual_start_time || slot.start_time,
       actual_start_arabic: formatArabicTime(slot.actual_start_time || slot.start_time),
-      end_time: slot.end_time,
-      end_time_arabic: formatArabicTime(slot.end_time),
+      end_time: slot.actual_end_time || slot.end_time,
+      end_time_arabic: formatArabicTime(slot.actual_end_time || slot.end_time),
       is_recommended: true,
       score: slot.score,
       reason: slot.reason
     }))
 
-    setSlots(mappedSlots)
+    // فلترة المواعيد للتأكد من مطابقتها للفترة المحددة تماماً
+    let filteredMappedSlots = mappedSlots
+    if (periodObj) {
+      const startMinutes = periodObj.startHour * 60
+      const endMinutes = periodObj.endHour * 60
+
+      filteredMappedSlots = mappedSlots.filter((slot: any) => {
+        const slotStartMinutes = timeStrToMinutes(slot.display_start_time)
+        return slotStartMinutes >= startMinutes && slotStartMinutes < endMinutes
+      })
+    }
+
+    // ترتيب المواعيد تصاعدياً من الصغير للكبير
+    filteredMappedSlots.sort((a: any, b: any) => {
+      return timeStrToMinutes(a.display_start_time) - timeStrToMinutes(b.display_start_time)
+    })
+
+    setSlots(filteredMappedSlots)
     setSlotsLoading(false)
   }, [selectedDate, selectedPeriod, service, barberId, shopId, serviceId, serviceDuration, supabase])
 
@@ -177,10 +230,11 @@ function BookingContent() {
     loadSlots()
   }, [loadSlots])
 
-  // Realtime: refresh slots when bookings change for this staff
+  // Realtime: refresh slots when bookings change for this staff (debounced)
   useEffect(() => {
     if (!barberId || !selectedDate) return
 
+    let timer: ReturnType<typeof setTimeout> | null = null
     const channel = supabase
       .channel(`staff-bookings-${barberId}-${selectedDate}`)
       .on(
@@ -192,13 +246,15 @@ function BookingContent() {
           filter: `staff_id=eq.${barberId}`,
         },
         () => {
-          // Debounce slightly to avoid rapid re-fetching
-          loadSlots()
+          // Debounce to avoid rapid re-fetching on bursts of events
+          if (timer) clearTimeout(timer)
+          timer = setTimeout(() => loadSlots(), 500)
         }
       )
       .subscribe()
 
     return () => {
+      if (timer) clearTimeout(timer)
       supabase.removeChannel(channel)
     }
   }, [barberId, selectedDate, supabase, loadSlots])
@@ -232,15 +288,59 @@ function BookingContent() {
     }
   }, [selectedSlot, shopId, barberId, serviceId, selectedDate, router])
 
+  const days = useMemo(() => (serverDate ? getNextDaysFromDate(serverDate) : []), [serverDate])
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-brand)' }} />
+      <div className="max-w-2xl mx-auto px-4 py-10 animate-pulse space-y-8">
+        {/* Breadcrumb skeleton */}
+        <div className="h-4 w-32 bg-gray-200 rounded"></div>
+
+        {/* Summary card skeleton */}
+        <div className="rounded-2xl p-5 flex items-center gap-4 bg-gray-100 border border-gray-200">
+          <div className="w-12 h-12 rounded-xl bg-gray-200 shrink-0"></div>
+          <div className="space-y-2 flex-1">
+            <div className="h-5 w-40 bg-gray-200 rounded"></div>
+            <div className="h-4 w-24 bg-gray-200 rounded"></div>
+          </div>
+          <div className="h-6 w-16 bg-gray-200 rounded ms-auto"></div>
+        </div>
+
+        {/* Date selection skeleton */}
+        <div className="space-y-4">
+          <div className="h-6 w-32 bg-gray-200 rounded"></div>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="shrink-0 w-16 h-[72px] rounded-2xl bg-gray-100 border border-gray-200 flex flex-col items-center justify-center space-y-2">
+                <div className="h-3 w-8 bg-gray-200 rounded"></div>
+                <div className="h-6 w-8 bg-gray-200 rounded"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Period selection skeleton */}
+        <div className="space-y-4">
+          <div className="h-6 w-32 bg-gray-200 rounded"></div>
+          <div className="flex gap-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-10 w-28 bg-gray-100 border border-gray-200 rounded-xl"></div>
+            ))}
+          </div>
+        </div>
+
+        {/* Time slots skeleton */}
+        <div className="space-y-4">
+          <div className="h-6 w-32 bg-gray-200 rounded"></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-16 bg-gray-100 border border-gray-200 rounded-xl"></div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
-
-  const days = serverDate ? getNextDaysFromDate(serverDate) : []
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
@@ -294,7 +394,7 @@ function BookingContent() {
           <h2 className="text-base font-bold" style={{ color: 'var(--color-gray-900)' }}>اختر التاريخ</h2>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
           {days.length === 0 && (
             <div className="h-[72px] flex items-center justify-center px-4">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--color-brand)' }} />
@@ -306,7 +406,7 @@ function BookingContent() {
               <button
                 key={day.iso}
                 onClick={() => setSelectedDate(day.iso)}
-                className="shrink-0 w-16 h-[72px] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all"
+                className="shrink-0 w-16 h-[72px] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all snap-center"
                 style={
                   active
                     ? {
@@ -334,37 +434,36 @@ function BookingContent() {
           <Clock className="w-5 h-5" style={{ color: 'var(--color-brand)' }} />
           <h2 className="text-base font-bold" style={{ color: 'var(--color-gray-900)' }}>اختر فترة الحجز</h2>
         </div>
-        <div className="flex flex-wrap gap-3">
-          {[
-            { id: 'morning', label: 'الصبح (6 ص - 12 م)' },
-            { id: 'afternoon', label: 'الظهر (12 م - 3 م)' },
-            { id: 'evening', label: 'العصر (3 م - 6 م)' },
-            { id: 'night', label: 'المسا (6 م - 11 م)' },
-          ].map((period) => {
-            const active = selectedPeriod === period.id
-            return (
-              <button
-                key={period.id}
-                onClick={() => setSelectedPeriod(period.id)}
-                className="py-2 px-4 rounded-xl text-sm font-bold transition-all"
-                style={
-                  active
-                    ? {
-                        background: 'linear-gradient(135deg, var(--color-brand), var(--color-brand-dark))',
-                        color: '#fff',
-                      }
-                    : {
-                        backgroundColor: 'var(--color-bg-card)',
-                        color: 'var(--color-gray-600)',
-                        border: '1.5px solid var(--color-gray-200)',
-                      }
-                }
-              >
-                {period.label}
-              </button>
-            )
-          })}
-        </div>
+        {filteredPeriods.length === 0 ? (
+          <p className="text-sm font-medium text-slate-500 py-2">لا توجد فترات متاحة لهذا اليوم بناءً على مواعيد الفرع والوقت الحالي.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {filteredPeriods.map((period) => {
+              const active = selectedPeriod === period.id
+              return (
+                <button
+                  key={period.id}
+                  onClick={() => setSelectedPeriod(period.id)}
+                  className="py-2 px-4 rounded-xl text-sm font-bold transition-all"
+                  style={
+                    active
+                      ? {
+                          background: 'linear-gradient(135deg, var(--color-brand), var(--color-brand-dark))',
+                          color: '#fff',
+                        }
+                      : {
+                          backgroundColor: 'var(--color-bg-card)',
+                          color: 'var(--color-gray-600)',
+                          border: '1.5px solid var(--color-gray-200)',
+                        }
+                  }
+                >
+                  {period.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── Time slots ── */}
@@ -381,62 +480,60 @@ function BookingContent() {
            </div>
         )}
 
-        {slotsLoading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--color-brand)' }} />
-          </div>
-        ) : slots.length === 0 ? (
-          <div
-            className="text-center py-10 rounded-2xl border text-sm"
-            style={{
-              backgroundColor: 'var(--color-bg-card)',
-              borderColor: 'var(--color-gray-200)',
-              color: 'var(--color-gray-600)',
-            }}
-          >
-            لا تتوفر أوقات في هذا اليوم
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {slots.map((slot, i) => {
-              const active = selectedSlot?.actual_start_time === slot.actual_start_time
-              return (
-                <button
-                  key={i}
-                  onClick={() => setSelectedSlot(slot)}
-                  className="py-3 px-4 rounded-xl cursor-pointer transition-all flex flex-col items-start text-start gap-2 relative"
-                  style={
-                    active
-                      ? {
-                          background: 'linear-gradient(135deg, var(--color-brand), var(--color-brand-dark))',
-                          color: '#fff',
-                        }
-                      : {
-                          backgroundColor: 'var(--color-bg-card)',
-                          color: 'var(--color-gray-800)',
-                          border: slot.is_recommended
-                            ? '1.5px solid var(--color-brand)'
-                            : '1.5px solid var(--color-gray-200)',
-                        }
-                  }
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 shrink-0 opacity-70" />
-                      <span className="font-extrabold text-base" dir="ltr">{slot.display_start_arabic || slot.display_start_time}</span>
+        <div className={slotsLoading ? "opacity-50 pointer-events-none transition-opacity duration-150" : "transition-opacity duration-150"}>
+          {slots.length === 0 ? (
+            <div
+              className="text-center py-10 rounded-2xl border text-sm"
+              style={{
+                backgroundColor: 'var(--color-bg-card)',
+                borderColor: 'var(--color-gray-200)',
+                color: 'var(--color-gray-600)',
+              }}
+            >
+              لا تتوفر أوقات في هذا اليوم
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {slots.map((slot, i) => {
+                const active = selectedSlot?.actual_start_time === slot.actual_start_time
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedSlot(slot)}
+                    className="py-3 px-4 rounded-xl cursor-pointer transition-all flex flex-col items-start text-start gap-2 relative"
+                    style={
+                      active
+                        ? {
+                            background: 'linear-gradient(135deg, var(--color-brand), var(--color-brand-dark))',
+                            color: '#fff',
+                          }
+                        : {
+                            backgroundColor: 'var(--color-bg-card)',
+                            color: 'var(--color-gray-800)',
+                            border: slot.is_recommended
+                              ? '1.5px solid var(--color-brand)'
+                              : '1.5px solid var(--color-gray-200)',
+                          }
+                    }
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 shrink-0 opacity-70" />
+                        <span className="font-extrabold text-base" dir="ltr">{slot.display_start_arabic || slot.display_start_time}</span>
+                      </div>
+                      {active && <Check className="w-5 h-5 shrink-0" />}
                     </div>
-                    {active && <Check className="w-5 h-5 shrink-0" />}
-                  </div>
-                  {slot.reason && (
-                    <span className="text-xs font-medium opacity-90 leading-relaxed">
-                      {slot.reason}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
+                    {slot.reason && (
+                      <span className="text-xs font-medium opacity-90 leading-relaxed">
+                        {slot.reason}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* ── Booking summary ── */}

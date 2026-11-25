@@ -7,20 +7,37 @@ const PROTECTED_ROUTES = ['/booking', '/profile']
 // Routes accessible only when NOT logged in
 const AUTH_ROUTES = ['/login', '/register']
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+export async function updateSession(request: NextRequest, extraHeaders?: Headers) {
+  const requestHeaders = new Headers(request.headers)
+  if (extraHeaders) {
+    extraHeaders.forEach((value, key) => {
+      requestHeaders.set(key, value)
+    })
+  }
+
+  let supabaseResponse = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)!,
     {
       cookies: {
         getAll() {
-          return request.cookies.getAll()
+          return request.cookies ? request.cookies.getAll() : []
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
+          if (request.cookies) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          }
+          supabaseResponse = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )

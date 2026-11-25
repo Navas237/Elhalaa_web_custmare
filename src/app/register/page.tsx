@@ -1,4 +1,5 @@
 import { signup } from '../login/actions'
+import { SubmitButton } from '../login/SubmitButton'
 import Link from 'next/link'
 import { Scissors } from 'lucide-react'
 
@@ -47,7 +48,7 @@ export default async function RegisterPage({ searchParams }: Props) {
             إنشاء حساب جديد
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-gray-600)' }}>
-            انضم إلى The Digital Atelier
+            أنشئ حسابك لحجز وإدارة مواعيدك بكل سهولة
           </p>
         </div>
 
@@ -65,7 +66,7 @@ export default async function RegisterPage({ searchParams }: Props) {
           </div>
         )}
 
-        <form className="flex flex-col gap-4">
+        <form action={signup} className="flex flex-col gap-4">
           {/* Pass redirect destination through the form */}
           {redirectTo && (
             <input type="hidden" name="redirect" value={redirectTo} />
@@ -97,9 +98,7 @@ export default async function RegisterPage({ searchParams }: Props) {
             </div>
           ))}
 
-          <button formAction={signup} className="btn-primary mt-2">
-            إنشاء حساب
-          </button>
+          <SubmitButton label="إنشاء حساب" pendingLabel="جاري إنشاء الحساب..." />
         </form>
 
         <div className="mt-6 text-center text-sm" style={{ color: 'var(--color-gray-600)' }}>

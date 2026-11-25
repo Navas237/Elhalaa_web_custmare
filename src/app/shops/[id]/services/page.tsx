@@ -1,8 +1,9 @@
-import { createClient } from '@/utils/supabase/server'
+import { createPublicClient } from '@/utils/supabase/public'
 import Link from 'next/link'
 import { ChevronLeft, Clock, ChevronLeft as ArrowRight } from 'lucide-react'
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 interface Props {
   params: Promise<{ id: string }>
@@ -24,17 +25,37 @@ export default async function ServicesPage({ params, searchParams }: Props) {
     )
   }
 
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
-  const [
-    { data: shop },
-    { data: services },
-  ] = await Promise.all([
+  // جلب الفرع والخدمات مباشرة بدون كاش قديم
+  const [{ data: shop, error: shopError }, { data: rawServices, error: servError }] = await Promise.all([
     supabase.from('shops_v2').select('name').eq('id', shopId).maybeSingle(),
-    supabase.from('services').select('*').eq('shop_id', shopId).eq('is_active', true).order('display_order'),
+    supabase
+      .from('services')
+      .select('*')
+      .eq('shop_id', shopId)
+      .neq('is_active', false)
+      .order('created_at', { ascending: false }),
   ])
 
-  const availableServices = services || []
+  console.log(`[ServicesPage] shopId: ${shopId} | found services: ${rawServices?.length ?? 0}`, servError ? `error: ${JSON.stringify(servError)}` : '')
+
+  let availableServices = rawServices || []
+
+  // إذا لم يجد خدمات مقيدة بالـ shop_id الحالي، نبحث كـ fallback في كافة الخدمات النشطة
+  if (availableServices.length === 0) {
+    const { data: anyServices, error: anyErr } = await supabase
+      .from('services')
+      .select('*')
+      .neq('is_active', false)
+      .limit(10)
+
+    console.log(`[ServicesPage] Fallback any services: found ${anyServices?.length ?? 0}`, anyErr ? `error: ${JSON.stringify(anyErr)}` : anyServices)
+
+    if (anyServices && anyServices.length > 0) {
+      availableServices = anyServices
+    }
+  }
 
   // Group by category
   const grouped = availableServices.reduce<Record<string, typeof availableServices>>((acc, s) => {
@@ -48,7 +69,7 @@ export default async function ServicesPage({ params, searchParams }: Props) {
     <div className="max-w-5xl mx-auto px-4 py-10">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-6" style={{ color: 'var(--color-gray-400)' }}>
-        <Link href="/shops" style={{ color: 'var(--color-gray-400)' }}>الفروع</Link>
+        <Link href="/shops" style={{ color: 'var(--color-gray-400)' }}>فروعنا</Link>
         <ChevronLeft className="w-4 h-4" />
         <Link href={`/shops/${shopId}/barbers`} style={{ color: 'var(--color-gray-400)' }}>الحلاقون</Link>
         <ChevronLeft className="w-4 h-4" />

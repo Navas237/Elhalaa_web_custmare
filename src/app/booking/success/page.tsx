@@ -6,6 +6,17 @@ interface Props {
   searchParams: Promise<{ id?: string }>
 }
 
+function formatArabicTime(timeStr?: string): string {
+  if (!timeStr) return ''
+  const [hStr, mStr] = timeStr.split(':')
+  const h = parseInt(hStr, 10)
+  const m = parseInt(mStr || '0', 10)
+  if (isNaN(h)) return timeStr
+  const period = h >= 12 ? 'م' : 'ص'
+  const displayH = h % 12 || 12
+  return `${displayH}:${String(m).padStart(2, '0')} ${period}`
+}
+
 export default async function BookingSuccessPage({ searchParams }: Props) {
   const { id: bookingId } = await searchParams
   let booking: any = null
@@ -28,7 +39,7 @@ export default async function BookingSuccessPage({ searchParams }: Props) {
   const barberName = 'الحلاق'
   const serviceName = booking?.services?.name
   const bookingDate = booking?.booking_date
-  const startTime = booking?.start_time?.slice(0, 5)
+  const startTime = formatArabicTime(booking?.display_start_time || booking?.start_time)
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-16">
@@ -52,20 +63,20 @@ export default async function BookingSuccessPage({ searchParams }: Props) {
           className="text-2xl font-extrabold mb-2"
           style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-gray-900)' }}
         >
-          تم إرسال طلب الحجز!
+          تم إرسال  الحجز!
         </h1>
 
         {/* Pending badge */}
-        <div
+        {/* <div
           className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold mb-6"
           style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
         >
           <Clock className="w-4 h-4" />
           في انتظار تأكيد الحجز
-        </div>
+        </div> */}
 
         <p className="text-sm mb-6" style={{ color: 'var(--color-gray-600)' }}>
-          شكراً لاختيارك The Digital Atelier. سيقوم الحلاق بالتأكيد قريباً.
+          شكراً لاختيارك لنا. تم تسجيل موعدك بنجاح.
         </p>
 
         {/* Booking details card */}

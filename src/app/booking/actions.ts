@@ -1,58 +1,20 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
 
 /**
  * Secure server-side booking creation.
  *
- * Flow:
- *  1. Verify authenticated user + email confirmation
- *  2. Check rate limit via Edge Function
- *  3. Fetch profile data (name, phone) from DB
- *  4. Insert booking with server-trusted auth.uid() as client_id
- *  5. Return booking or structured error
+ * Flow (2 serial phases instead of 4):
+ *  1. Session validation + rate-limit check run CONCURRENTLY.
+ *  2. Single `create_customer_booking` RPC does pending-check + profile
+ *     lookup/auto-create + insert atomically in ONE DB roundtrip.
+ * True abuse is still stopped by DB triggers + excl_no_double_booking.
  */
 export async function createBooking(formData: FormData) {
   const supabase = await createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: 'AUTH_REQUIRED', message: 'يجب تسجيل الدخول لإكمال الحجز' }
-  }
-
-  if (!user.email_confirmed_at) {
-    return { error: 'EMAIL_NOT_VERIFIED', message: 'يرجى تأكيد بريدك الإلكتروني لإكمال الحجز' }
-  }
-
-  // ── Rate limiting (reuse owner app pattern) ──
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const rateRes = await fetch(`${supabaseUrl}/functions/v1/rate-limit-booking`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
-      },
-    })
-
-    if (rateRes.status === 429) {
-      const retryAfter = rateRes.headers.get('Retry-After')
-      return {
-        error: 'RATE_LIMITED',
-        message: `عدد المحاولات كبير. يرجى الانتظار ${retryAfter ? `${retryAfter} ثانية` : 'قليلاً'} وحاول مرة أخرى.`,
-      }
-    }
-    if (!rateRes.ok) {
-      // Fail open if rate limiter is down — log but continue
-      console.warn('Rate limit check failed, proceeding:', await rateRes.text())
-    }
-  } catch (err) {
-    console.warn('Rate limiter unreachable, proceeding:', err)
-  }
-
-  // ── Extract form data ──
+  // ── Extract + validate form data first (fail fast, zero network) ──
   const shopId       = formData.get('shopId') as string
   const staffId      = formData.get('staffId') as string
   const serviceId    = formData.get('serviceId') as string
@@ -65,110 +27,53 @@ export async function createBooking(formData: FormData) {
     return { error: 'MISSING_FIELDS', message: 'بيانات الحجز غير مكتملة' }
   }
 
-  // ── Pre-check: client must not have an active unconfirmed booking ──
-  const { data: pendingBookings, error: pendingError } = await supabase
-    .from('bookings_v2')
-    .select('id, status')
-    .eq('client_id', user.id)
-    .in('status', ['pending', 'waiting_time'])
-    .limit(1)
+  // ── Phase 1 (parallel): session validation overlaps the rate-limit HTTP call ──
+  const [userResult, rate] = await Promise.all([
+    supabase.auth.getUser(),
+    checkRateLimit(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      (await supabase.auth.getSession()).data.session?.access_token || ''
+    ),
+  ])
 
-  if (pendingError) {
-    console.error('Pending booking check failed:', pendingError)
+  const user = userResult.data.user
+
+  if (!user) {
+    return { error: 'AUTH_REQUIRED', message: 'يجب تسجيل الدخول لإكمال الحجز' }
   }
 
-  if (pendingBookings && pendingBookings.length > 0) {
+  if (!user.email_confirmed_at) {
+    return { error: 'EMAIL_NOT_VERIFIED', message: 'يرجى تأكيد بريدك الإلكتروني لإكمال الحجز' }
+  }
+
+  if (rate.limited) {
     return {
-      success: false,
-      code: 'PENDING_BOOKING_EXISTS',
-      message: 'لديك حجز في الانتظار بالفعل لا يمكنك اضافه حجز اخر',
+      error: 'RATE_LIMITED',
+      message: `عدد المحاولات كبير. يرجى الانتظار ${rate.retryAfter ? `${rate.retryAfter} ثانية` : 'قليلاً'} وحاول مرة أخرى.`,
     }
   }
 
-  // ── Fetch profile for name / phone ──
-  let { data: profile } = await supabase
-    .from('profiles')
-    .select('name, phone')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  // If profile is missing (e.g. signup interrupted), try to create one to satisfy FK constraint
-  if (!profile) {
-    const { data: newProfile, error: profileCreateError } = await supabase.from('profiles').insert({
-      id: user.id,
-      email: user.email || '',
-      name: user.user_metadata?.full_name || user.user_metadata?.name || 'عميل',
-      phone: user.user_metadata?.phone || null,
-      role: 'client'
-    }).select('name, phone').single()
-
-    if (profileCreateError) {
-      console.error('Failed to auto-create missing profile:', profileCreateError)
-      return { success: false, code: 'PROFILE_MISSING', message: 'حسابك غير مكتمل، يرجى التواصل مع الدعم أو تسجيل حساب جديد.' }
+  // ── Phase 2 (single DB roundtrip) ──
+  const { data: result, error: rpcError } = await supabase.rpc(
+    'create_customer_booking',
+    {
+      p_shop_id: shopId,
+      p_staff_id: staffId,
+      p_service_id: serviceId,
+      p_booking_date: bookingDate,
+      p_start_time: startTime,
+      p_end_time: endTime,
+      p_display_start_time: displayStart || startTime,
     }
-    profile = newProfile
-  }
+  )
 
-  // ── Server-side insert with trusted auth.uid() ──
-  const { data: bookings, error: insertError } = await supabase
-    .from('bookings_v2')
-    .insert({
-      shop_id: shopId,
-      staff_id: staffId,
-      service_id: serviceId,
-      client_id: user.id,
-      client_name: profile?.name || 'عميل',
-      client_phone: profile?.phone || null,
-      booking_date: bookingDate,
-      start_time: startTime,
-      end_time: endTime,
-      display_start_time: displayStart || startTime,
-      status: 'pending',
-      payment_method: 'cash',
-    })
-    .select()
-
-  const booking = bookings?.[0]
-
-  if (insertError) {
-    // Build a single string from all error fields for robust matching
-    const raw = [
-      insertError.message,
-      insertError.details,
-      insertError.hint,
-      insertError.code,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-
-    if (
-      raw.includes('pending_booking_exists') ||
-      raw.includes('pending booking') ||
-      raw.includes('active unconfirmed booking')
-    ) {
-      return {
-        success: false,
-        code: 'PENDING_BOOKING_EXISTS',
-        message: 'لديك حجز في الانتظار بالفعل لا يمكنك اضافه حجز اخر',
-      }
+  if (rpcError) {
+    // Expired/invalid JWT: PostgREST rejects before the function runs
+    const raw = `${rpcError.message || ''} ${rpcError.code || ''}`.toLowerCase()
+    if (raw.includes('jwt') || raw.includes('expired') || raw.includes('401') || rpcError.code === 'PGRST301') {
+      return { error: 'AUTH_REQUIRED', message: 'يجب تسجيل الدخول لإكمال الحجز' }
     }
-
-    if (
-      raw.includes('overlap') ||
-      raw.includes('booking overlap') ||
-      raw.includes('double booking') ||
-      insertError.code === 'P0001'
-    ) {
-      return {
-        success: false,
-        code: 'SLOT_TAKEN',
-        message: 'عذراً، هذا الموعد تم حجزه للتو. يرجى اختيار وقت آخر.',
-      }
-    }
-
-    // Log unknown errors for debugging
-    console.error('Booking insert failed:', insertError)
+    console.error('Booking RPC failed:', rpcError)
     return {
       success: false,
       code: 'INSERT_FAILED',
@@ -176,5 +81,64 @@ export async function createBooking(formData: FormData) {
     }
   }
 
-  return { success: true, booking }
+  if (!result?.success) {
+    switch (result?.code) {
+      case 'AUTH_REQUIRED':
+        return { error: 'AUTH_REQUIRED', message: 'يجب تسجيل الدخول لإكمال الحجز' }
+      case 'EMAIL_NOT_VERIFIED':
+        return { error: 'EMAIL_NOT_VERIFIED', message: 'يرجى تأكيد بريدك الإلكتروني لإكمال الحجز' }
+      case 'PENDING_BOOKING_EXISTS':
+        return {
+          success: false,
+          code: 'PENDING_BOOKING_EXISTS',
+          message: 'لديك حجز في الانتظار بالفعل لا يمكنك اضافه حجز اخر',
+        }
+      case 'SLOT_TAKEN':
+        return {
+          success: false,
+          code: 'SLOT_TAKEN',
+          message: 'عذراً، هذا الموعد تم حجزه للتو. يرجى اختيار وقت آخر.',
+        }
+      default:
+        return {
+          success: false,
+          code: 'INSERT_FAILED',
+          message: 'حدث خطأ أثناء الحجز. حاول مرة أخرى.',
+        }
+    }
+  }
+
+  return { success: true, booking: result.booking }
+}
+
+/**
+ * Rate-limit check with a hard timeout. Never throws — fails open.
+ * Runs CONCURRENTLY with session validation so it never adds
+ * serial latency to the booking critical path.
+ */
+async function checkRateLimit(
+  supabaseUrl: string,
+  accessToken: string
+): Promise<{ limited: boolean; retryAfter: string | null }> {
+  try {
+    const rateRes = await fetch(`${supabaseUrl}/functions/v1/rate-limit-booking`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      // Cap worst-case added latency even when run in parallel
+      signal: AbortSignal.timeout(1500),
+    })
+
+    if (rateRes.status === 429) {
+      return { limited: true, retryAfter: rateRes.headers.get('Retry-After') }
+    }
+    if (!rateRes.ok) {
+      console.warn('Rate limit check failed, proceeding:', await rateRes.text())
+    }
+  } catch (err) {
+    console.warn('Rate limiter unreachable, proceeding:', err)
+  }
+  return { limited: false, retryAfter: null }
 }

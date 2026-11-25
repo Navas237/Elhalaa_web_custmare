@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
+import { createPublicClient } from '@/utils/supabase/public'
 import Link from 'next/link'
 import { ChevronLeft, User2, Scissors } from 'lucide-react'
 
@@ -6,29 +6,39 @@ export const revalidate = 30
 
 interface Params { params: Promise<{ id: string }> }
 
+// Prerender known shops at build; new shops generate on-demand + cache (ISR).
+export async function generateStaticParams() {
+  const supabase = createPublicClient()
+  const { data: shops } = await supabase.from('shops_v2').select('id').eq('status', 'open')
+  return (shops || []).map((s: any) => ({ id: s.id }))
+}
+
 export default async function BarbersPage({ params }: Params) {
   const { id: shopId } = await params
-  const supabase = await createClient()
+  // Cookie-free client: keeps this route static so `revalidate` applies.
+  const supabase = createPublicClient()
 
-  // Shop name
-  const { data: shop, error: shopError } = await supabase
-    .from('shops_v2')
-    .select('name')
-    .eq('id', shopId)
-    .single()
+  // Shop + staff load concurrently (were sequential)
+  const [{ data: shop, error: shopError }, { data: staffRaw, error: staffError }] =
+    await Promise.all([
+      supabase
+        .from('shops_v2')
+        .select('name')
+        .eq('id', shopId)
+        .single(),
+      // Use the same RPC the Owner app uses — most reliable way to get staff + profiles
+      supabase
+        .rpc('get_shop_staff_with_profiles', { p_shop_id: shopId }),
+    ])
 
   if (shopError || !shop) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-20 text-center">
         <p className="text-sm mb-4" style={{ color: 'var(--color-brand)' }}>الفرع غير موجود.</p>
-        <Link href="/shops" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>العودة للفروع</Link>
+        <Link href="/shops" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>العودة لفروعنا</Link>
       </div>
     )
   }
-
-  // Use the same RPC the Owner app uses — most reliable way to get staff + profiles
-  const { data: staffRaw, error: staffError } = await supabase
-    .rpc('get_shop_staff_with_profiles', { p_shop_id: shopId })
 
   // Fallback: direct query without role filter if RPC fails
   let barbers: any[] = []
@@ -48,7 +58,7 @@ export default async function BarbersPage({ params }: Params) {
       avatar_url: null,
     }))
   } else {
-    barbers = staffRaw
+    barbers = (staffRaw || []).filter((s: any) => s.is_active === true && s.role === 'barber')
   }
 
   return (
@@ -57,7 +67,7 @@ export default async function BarbersPage({ params }: Params) {
       <div className="flex items-center gap-2 text-sm mb-6" style={{ color: 'var(--color-gray-400)' }}>
         <Link href="/" style={{ color: 'var(--color-gray-400)' }}>الرئيسية</Link>
         <ChevronLeft className="w-4 h-4" />
-        <Link href="/shops" style={{ color: 'var(--color-gray-400)' }}>الفروع</Link>
+        <Link href="/shops" style={{ color: 'var(--color-gray-400)' }}>فروعنا</Link>
         <ChevronLeft className="w-4 h-4" />
         <span style={{ color: 'var(--color-gray-900)' }}>اختر الحلاق</span>
       </div>

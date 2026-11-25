@@ -1,4 +1,5 @@
 import { login } from './actions'
+import { SubmitButton } from './SubmitButton'
 import Link from 'next/link'
 import { Scissors } from 'lucide-react'
 
@@ -40,7 +41,7 @@ export default async function LoginPage({ searchParams }: Props) {
             تسجيل الدخول
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-gray-600)' }}>
-            مرحباً بك في The Digital Atelier
+            مرحباً بك مجدداً — سجل دخولك للمتابعة
           </p>
         </div>
 
@@ -58,7 +59,7 @@ export default async function LoginPage({ searchParams }: Props) {
           </div>
         )}
 
-        <form className="flex flex-col gap-4">
+        <form action={login} className="flex flex-col gap-4">
           {/* Pass redirect destination through the form */}
           {redirectTo && (
             <input type="hidden" name="redirect" value={redirectTo} />
@@ -101,14 +102,16 @@ export default async function LoginPage({ searchParams }: Props) {
             />
           </div>
 
-          <button formAction={login} className="btn-primary mt-2">
-            دخول
-          </button>
+          <SubmitButton label="دخول" pendingLabel="جاري الدخول..." />
         </form>
 
         <div className="mt-6 text-center text-sm" style={{ color: 'var(--color-gray-600)' }}>
           ليس لديك حساب؟{' '}
-          <Link href="/register" className="font-bold" style={{ color: 'var(--color-brand)' }}>
+          <Link
+            href={redirectTo ? `/register?redirect=${encodeURIComponent(redirectTo)}` : '/register'}
+            className="font-bold"
+            style={{ color: 'var(--color-brand)' }}
+          >
             سجل الآن
           </Link>
         </div>

@@ -34,6 +34,10 @@
   --color-success:       #1A7A35;
   --color-success-light: #EAF3DE;
   --color-warning:       #E65100;
+  --color-error:         #DC2626;
+  --color-error-light:   #FEF2F2;
+  --color-info:          #5EC8C0;
+  --color-info-light:    #E8F8F7;
 
   /* Backgrounds */
   --color-bg-page:    #F7F8FA;
@@ -86,13 +90,17 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .card-hover {
-    transition: box-shadow 200ms, border-color 200ms, transform 200ms;
+    transition: box-shadow 150ms, border-color 150ms, transform 150ms;
   }
 
   .card-hover:hover {
     box-shadow: var(--shadow-elevated);
     border-color: var(--color-brand);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
+  }
+
+  .card-hover:active {
+    opacity: 0.92;
   }
 
   /* Inputs */
@@ -128,7 +136,7 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: var(--radius-md);
     border: none;
     cursor: pointer;
-    transition: opacity 150ms, transform 100ms;
+    transition: opacity 80ms, transform 80ms;
     width: 100%;
     font-size: 15px;
   }
@@ -138,7 +146,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .btn-primary:active {
-    transform: scale(0.99);
+    transform: scale(0.98);
   }
 
   .btn-primary:disabled {
@@ -228,12 +236,12 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Smooth page transitions */
 main {
-  animation: fadeIn 150ms ease-out;
+  animation: fadeIn 120ms ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0);    }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* RTL mobile overflow prevention */

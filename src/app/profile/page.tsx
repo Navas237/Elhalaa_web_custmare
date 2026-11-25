@@ -13,7 +13,11 @@ const STATUS: Record<string, { label: string; bg: string; color: string }> = {
   no_show:   { label: 'غائب',         bg: '#FFF3E0', color: '#E65100' },
 }
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ pastPage?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -30,18 +34,38 @@ export default async function ProfilePage() {
     )
   }
 
-  const [{ data: profile }, { data: bookings }] = await Promise.all([
+  // ── Past bookings pagination (server-side, no full-history fetch) ──
+  const PAGE_SIZE = 10
+  const rawPage = Number((await searchParams)?.pastPage ?? 1)
+  const pastPage = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1
+  const pastFrom = (pastPage - 1) * PAGE_SIZE
+  const pastTo = pastFrom + PAGE_SIZE // fetch one extra to detect hasMore
+
+  const [{ data: profile }, { data: upcoming }, { data: pastChunk }] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
+    // Upcoming are few — fetch all (capped)
     supabase
       .from('bookings_v2')
       .select(`*, shops_v2(name, address), shop_staff(profiles(name)), services(name, duration_minutes)`)
       .eq('client_id', user.id)
+      .in('status', ['pending', 'confirmed', 'waiting_time'])
+      .order('booking_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .limit(50),
+    // Past history — paginated, newest first
+    supabase
+      .from('bookings_v2')
+      .select(`*, shops_v2(name, address), shop_staff(profiles(name)), services(name, duration_minutes)`)
+      .eq('client_id', user.id)
+      .in('status', ['completed', 'cancelled', 'no_show'])
       .order('booking_date', { ascending: false })
-      .order('start_time', { ascending: false }),
+      .order('start_time', { ascending: false })
+      .range(pastFrom, pastTo),
   ])
 
-  const upcoming = bookings?.filter((b) => ['pending', 'confirmed'].includes(b.status)) || []
-  const past = bookings?.filter((b) => ['completed', 'cancelled', 'no_show'].includes(b.status)) || []
+  const hasMorePast = (pastChunk?.length ?? 0) > PAGE_SIZE
+  const past = (pastChunk ?? []).slice(0, PAGE_SIZE)
+  const upcomingList = upcoming ?? []
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
@@ -95,16 +119,16 @@ export default async function ProfilePage() {
           <h2 className="text-xl font-bold" style={{ color: 'var(--color-gray-900)', fontFamily: 'var(--font-heading)' }}>
             المواعيد القادمة
           </h2>
-          {upcoming.length > 0 && (
+          {upcomingList.length > 0 && (
             <span
               className="badge badge-brand"
             >
-              {upcoming.length}
+              {upcomingList.length}
             </span>
           )}
         </div>
 
-        {upcoming.length === 0 ? (
+        {upcomingList.length === 0 ? (
           <div
             className="text-center py-14 rounded-2xl border"
             style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-gray-200)' }}
@@ -121,13 +145,13 @@ export default async function ProfilePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {upcoming.map((b) => <BookingCard key={b.id} booking={b} />)}
+            {upcomingList.map((b) => <BookingCard key={b.id} booking={b} />)}
           </div>
         )}
       </section>
 
-      {/* ── Past ── */}
-      {past.length > 0 && (
+      {/* ── Past (paginated) ── */}
+      {(past.length > 0 || pastPage > 1) && (
         <section>
           <div className="flex items-center gap-3 mb-5">
             <div className="w-1 h-6 rounded-full" style={{ backgroundColor: 'var(--color-gray-300)' }} />
@@ -138,6 +162,17 @@ export default async function ProfilePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-75">
             {past.map((b) => <BookingCard key={b.id} booking={b} isPast />)}
           </div>
+          {hasMorePast && (
+            <div className="text-center mt-6">
+              <Link
+                href={`/profile?pastPage=${pastPage + 1}`}
+                className="text-sm font-bold px-6 py-2.5 rounded-xl inline-block cursor-pointer transition-colors border"
+                style={{ color: 'var(--color-brand)', borderColor: 'var(--color-brand-border)', backgroundColor: 'var(--color-bg-card)' }}
+              >
+                عرض المزيد
+              </Link>
+            </div>
+          )}
         </section>
       )}
     </div>
