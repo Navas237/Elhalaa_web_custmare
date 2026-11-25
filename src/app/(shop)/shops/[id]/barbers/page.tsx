@@ -1,20 +1,18 @@
 import { createPublicClient } from '@/utils/supabase/public'
 import Link from 'next/link'
 import { ChevronLeft, User2, Scissors } from 'lucide-react'
+import { notFound } from 'next/navigation'
+import { getTenant, shopBelongsToTenant } from '@/utils/tenant'
 
-export const revalidate = 30
+// Host-dependent (tenant check), so never cached across hosts.
+export const dynamic = 'force-dynamic'
 
 interface Params { params: Promise<{ id: string }> }
 
-// Prerender known shops at build; new shops generate on-demand + cache (ISR).
-export async function generateStaticParams() {
-  const supabase = createPublicClient()
-  const { data: shops } = await supabase.from('shops_v2').select('id').eq('status', 'open')
-  return (shops || []).map((s: any) => ({ id: s.id }))
-}
-
 export default async function BarbersPage({ params }: Params) {
   const { id: shopId } = await params
+  const tenant = await getTenant()
+  if (!(await shopBelongsToTenant(shopId, tenant))) notFound()
   // Cookie-free client: keeps this route static so `revalidate` applies.
   const supabase = createPublicClient()
 

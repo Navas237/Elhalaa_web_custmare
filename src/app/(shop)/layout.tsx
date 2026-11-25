@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Cairo } from 'next/font/google'
+import { Noto_Kufi_Arabic } from 'next/font/google'
 import './globals.css'
 import Link from 'next/link'
 import { Scissors, Menu } from 'lucide-react'
@@ -7,10 +7,10 @@ import BottomNavigation from './BottomNavigation'
 import HeaderAuth from './HeaderAuth'
 import { getTenant } from '@/utils/tenant'
 
-const cairo = Cairo({
+const kufi = Noto_Kufi_Arabic({
   subsets: ['arabic', 'latin'],
   weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-cairo',
+  variable: '--font-kufi',
   display: 'swap', // prevent FOIT
 })
 
@@ -25,19 +25,19 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#E8192C',
+  themeColor: '#2A1238',
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getTenant()
 
   return (
-    <html lang="ar" dir="rtl" className={cairo.variable} suppressHydrationWarning>
+    <html lang="ar" dir="rtl" className={kufi.variable} suppressHydrationWarning>
       <head>
         <style dangerouslySetInnerHTML={{
           __html: `
             :root {
-              --color-brand: ${tenant.branding.primary_color || '#E8192C'};
+              --color-brand: ${tenant.branding.primary_color || '#2A1238'};
             }
           `
         }} />

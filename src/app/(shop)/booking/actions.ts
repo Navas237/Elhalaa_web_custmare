@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
+import { getTenant, shopBelongsToTenant } from '@/utils/tenant'
 
 /**
  * Secure server-side booking creation.
@@ -25,6 +26,12 @@ export async function createBooking(formData: FormData) {
 
   if (!shopId || !staffId || !serviceId || !bookingDate || !startTime || !endTime) {
     return { error: 'MISSING_FIELDS', message: 'بيانات الحجز غير مكتملة' }
+  }
+
+  // ── Tenant boundary: the branch must belong to the shop site the request came from ──
+  const tenant = await getTenant()
+  if (!(await shopBelongsToTenant(shopId, tenant))) {
+    return { error: 'SHOP_NOT_FOUND', message: 'الفرع غير متاح' }
   }
 
   // ── Phase 1 (parallel): session validation overlaps the rate-limit HTTP call ──

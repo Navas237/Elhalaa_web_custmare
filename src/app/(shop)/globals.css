@@ -7,19 +7,19 @@
 
 @theme {
   /* Fonts */
-  --font-sans: var(--font-cairo), 'Cairo', sans-serif;
-  --font-heading: var(--font-cairo), 'Cairo', sans-serif;
+  --font-sans: var(--font-kufi), 'Noto Kufi Arabic', 'Cairo', sans-serif;
+  --font-heading: var(--font-kufi), 'Noto Kufi Arabic', 'Cairo', sans-serif;
 
   /* Brand — Red (mirrors app primary) */
-  --color-brand:        #E8192C;
-  --color-brand-dark:   #C0102A;
-  --color-brand-light:  #FDECEA;
-  --color-brand-border: #F5A3AA;
+  --color-brand:        #2A1238;
+  --color-brand-dark:   #1B0A26;
+  --color-brand-light:  #EBDDF7;
+  --color-brand-border: #C9B6DE;
 
   /* Teal accent */
-  --color-teal:       #5EC8C0;
-  --color-teal-dark:  #2FA8A0;
-  --color-teal-light: #E8F8F7;
+  --color-teal:       #C6F04A;
+  --color-teal-dark:  #8FB82A;
+  --color-teal-light: #F1FBD0;
 
   /* Neutrals */
   --color-gray-50:  #F7F8FA;
@@ -36,11 +36,11 @@
   --color-warning:       #E65100;
   --color-error:         #DC2626;
   --color-error-light:   #FEF2F2;
-  --color-info:          #5EC8C0;
-  --color-info-light:    #E8F8F7;
+  --color-info:          #8FB82A;
+  --color-info-light:    #F1FBD0;
 
   /* Backgrounds */
-  --color-bg-page:    #F7F8FA;
+  --color-bg-page:    #F8F5FB;
   --color-bg-card:    #FFFFFF;
   --color-bg-section: #F0F1F3;
 

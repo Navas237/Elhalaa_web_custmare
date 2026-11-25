@@ -1,5 +1,6 @@
 import { createPublicClient } from '@/utils/supabase/public'
 import { headers } from 'next/headers'
+import { notFound } from 'next/navigation'
 import { cache } from 'react'
 
 export interface TenantBranding {
@@ -33,7 +34,7 @@ export const DEFAULT_TENANT: Tenant = {
   is_active: true,
   branding: {
     logo_url: null,
-    primary_color: '#E8192C',
+    primary_color: '#2A1238',
     tagline: 'أرقى صالون بالمنطقة',
     description: 'اختر حلاقك المفضل، وحدد الخدمة والوقت المناسب — كل ذلك في أقل من دقيقة.',
     hero_title: 'احجز موعدك في',
@@ -42,66 +43,42 @@ export const DEFAULT_TENANT: Tenant = {
 }
 
 /**
- * جلب بيانات الـ Tenant النشط بناءً على الـ Subdomain مع الكاش (Request-level cache)
+ * Reserved hostnames. They are never tenants, and a shop can not claim them.
+ * Keep in sync with the dashboard proxy and with the DB check when tenants are created.
+ */
+export const RESERVED_SUBDOMAINS = new Set([
+  'www', 'app', 'admin', 'hq-7m4x', 'api', 'mail', 'default',
+])
+
+/**
+ * Resolve the active tenant from the host (x-tenant-subdomain, set by the proxy).
+ * Strict: no subdomain, a reserved subdomain, an unknown or inactive tenant all
+ * end in notFound(). There is no fallback to another shop.
  */
 export const getTenant = cache(async (explicitSubdomain?: string | null): Promise<Tenant> => {
   let subdomain = explicitSubdomain
-
-  // إذا لم يتم تمرير السب-دومين صراحة، نقرأه من الهيدرز أو من الـ host مباشرة
   if (!subdomain) {
     try {
       const headersList = await headers()
       subdomain = headersList.get('x-tenant-subdomain')
-
-      if (!subdomain) {
-        const host = headersList.get('host') || headersList.get('x-forwarded-host') || ''
-        const hostname = host.split(':')[0].toLowerCase()
-        if (hostname.endsWith('.localhost')) {
-          const sub = hostname.replace('.localhost', '').trim()
-          if (sub && sub !== 'www') subdomain = sub
-        } else if (hostname.endsWith('.localhost.com')) {
-          const sub = hostname.replace('.localhost.com', '').trim()
-          if (sub && sub !== 'www') subdomain = sub
-        }
-      }
     } catch {
-      // خارج سياق الطلب (مثلاً أثناء الـ Build)
+      // outside a request (build)
     }
   }
+
+  subdomain = subdomain?.trim().toLowerCase() || null
+  if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) notFound()
 
   const supabase = createPublicClient()
-
-  // 1. البحث بالـ Subdomain إذا كان متوفراً
-  if (subdomain && subdomain !== 'default' && subdomain !== 'app' && subdomain !== 'admin') {
-    const { data, error } = await supabase
-      .from('tenants')
-      .select('*')
-      .ilike('subdomain', subdomain.trim())
-      .maybeSingle()
-
-    if (!error && data) {
-      console.log(`[getTenant] Subdomain matched '${subdomain}':`, data.name, '| owner_id:', data.owner_id)
-      return normalizeTenant(data)
-    } else {
-      console.warn(`[getTenant] No tenant found in DB for subdomain '${subdomain}'`, error?.message || '')
-    }
-  }
-
-  // 2. إذا لم يكن هناك سب-دومين (زي localhost مباشرة)، نجلب أحدث صالون نشط في الداتا بيز
-  const { data: latestTenant } = await supabase
+  const { data, error } = await supabase
     .from('tenants')
     .select('*')
+    .eq('subdomain', subdomain)
     .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
     .maybeSingle()
 
-  if (latestTenant) {
-    return normalizeTenant(latestTenant)
-  }
-
-  // 3. Fallback في حال لم توجد بيانات صالونات في الداتابيز بعد
-  return DEFAULT_TENANT
+  if (error || !data) notFound()
+  return normalizeTenant(data)
 })
 
 function normalizeTenant(data: any): Tenant {
@@ -127,4 +104,25 @@ function normalizeTenant(data: any): Tenant {
       badge_text: branding.badge_text || `${data.name || DEFAULT_TENANT.name}`,
     },
   }
+}
+
+/**
+ * True when the branch belongs to the tenant. A legacy branch with no tenant_id
+ * counts when its owner is the tenant owner.
+ */
+export async function shopBelongsToTenant(
+  shopId: string,
+  tenant: Pick<Tenant, 'id' | 'owner_id'>,
+  client?: { from: (t: string) => any },
+): Promise<boolean> {
+  if (!shopId || !tenant.id) return false
+  const supabase = client ?? createPublicClient()
+  const { data } = await supabase
+    .from('shops_v2')
+    .select('tenant_id, owner_id')
+    .eq('id', shopId)
+    .maybeSingle()
+  if (!data) return false
+  if (data.tenant_id) return data.tenant_id === tenant.id
+  return !!tenant.owner_id && data.owner_id === tenant.owner_id
 }

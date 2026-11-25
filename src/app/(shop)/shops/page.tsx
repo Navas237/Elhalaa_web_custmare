@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { MapPin, Star, Scissors, ChevronLeft } from 'lucide-react'
 import { ShopImage } from './ShopImage'
 import { getTenant } from '@/utils/tenant'
-import { headers } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -11,58 +10,17 @@ export const revalidate = 0
 export default async function ShopsPage() {
   const tenant = await getTenant()
 
-  let explicitSubdomain: string | null = null
-  try {
-    const headersList = await headers()
-    explicitSubdomain = headersList.get('x-tenant-subdomain')
-    if (!explicitSubdomain) {
-      const host = headersList.get('host') || headersList.get('x-forwarded-host') || ''
-      const hostname = host.split(':')[0].toLowerCase()
-      if (hostname.endsWith('.localhost')) {
-        const sub = hostname.replace('.localhost', '').trim()
-        if (sub && sub !== 'www') explicitSubdomain = sub
-      } else if (hostname.endsWith('.localhost.com')) {
-        const sub = hostname.replace('.localhost.com', '').trim()
-        if (sub && sub !== 'www') explicitSubdomain = sub
-      }
-    }
-  } catch {}
-
   const supabase = createPublicClient()
-  
-  let shops: any[] = []
-  let error: any = null
 
-  // 1. إذا تم الدخول عبر سبدومين مخصص، نجلب فروع ذلك الصالون فقط
-  if (tenant.owner_id && explicitSubdomain) {
-    const res = await supabase
-      .from('shops_v2')
-      .select('id, name, address, rating, image_url, status')
-      .eq('owner_id', tenant.owner_id)
-      .neq('status', 'closed')
-      .order('created_at', { ascending: false })
-
-    shops = res.data || []
-    error = res.error
-    console.log(`[ShopsPage] Query for owner_id '${tenant.owner_id}': found ${shops.length} shops`, error ? `error: ${JSON.stringify(error)}` : '')
-  }
-
-  // 2. إذا لم يكن هناك سب-دومين صريح أو لم توجد فروع للصالون المحدد، نجلب كل الفروع المفتوحة
-  if (shops.length === 0) {
-    const fallbackRes = await supabase
-      .from('shops_v2')
-      .select('id, name, address, rating, image_url, status, owner_id')
-      .neq('status', 'closed')
-      .order('created_at', { ascending: false })
-
-    console.log(`[ShopsPage] Fallback all shops: found ${fallbackRes.data?.length ?? 0} shops`, fallbackRes.error ? `error: ${JSON.stringify(fallbackRes.error)}` : '', fallbackRes.data)
-
-    if (fallbackRes.data && fallbackRes.data.length > 0) {
-      shops = fallbackRes.data
-    } else if (fallbackRes.error && !error) {
-      error = fallbackRes.error
-    }
-  }
+  // Only this tenant's branches. A legacy branch with no tenant_id still counts
+  // when it belongs to the tenant owner. Never list branches of other tenants.
+  const { data: shopsData, error } = await supabase
+    .from('shops_v2')
+    .select('id, name, address, rating, image_url, status')
+    .or(`tenant_id.eq.${tenant.id},and(tenant_id.is.null,owner_id.eq.${tenant.owner_id})`)
+    .neq('status', 'closed')
+    .order('created_at', { ascending: false })
+  const shops: any[] = shopsData || []
 
   if (error) {
     console.error('Error fetching shops:', error)
@@ -91,12 +49,10 @@ export default async function ShopsPage() {
           className="text-3xl font-extrabold mb-2"
           style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-gray-900)' }}
         >
-          {explicitSubdomain ? `فروع ${tenant.name}` : 'فروعنا المتاحة'}
+          {`فروع ${tenant.name}`}
         </h1>
         <p style={{ color: 'var(--color-gray-600)' }}>
-          {explicitSubdomain 
-            ? `اختر الفرع الأقرب إليك من فروع ${tenant.name} وابدأ تجربة الحجز`
-            : 'اختر الفرع الأقرب إليك وابدأ تجربة الحجز بكل سهولة'}
+          {`اختر الفرع الأقرب إليك من فروع ${tenant.name} وابدأ تجربة الحجز`}
         </p>
       </div>
 
@@ -108,7 +64,7 @@ export default async function ShopsPage() {
         >
           <Scissors className="w-10 h-10 mx-auto mb-4" style={{ color: 'var(--color-gray-400)' }} />
           <h3 className="text-lg font-bold mb-1" style={{ color: 'var(--color-gray-900)' }}>
-            {explicitSubdomain ? `لا توجد فروع متاحة لـ ${tenant.name} حالياً` : 'لا توجد فروع متاحة حالياً'}
+            {`لا توجد فروع متاحة لـ ${tenant.name} حالياً`}
           </h3>
           <p className="text-sm" style={{ color: 'var(--color-gray-400)' }}>
             يرجى المحاولة في وقت لاحق

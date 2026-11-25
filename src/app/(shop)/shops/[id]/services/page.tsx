@@ -1,6 +1,8 @@
 import { createPublicClient } from '@/utils/supabase/public'
 import Link from 'next/link'
 import { ChevronLeft, Clock, ChevronLeft as ArrowRight } from 'lucide-react'
+import { notFound } from 'next/navigation'
+import { getTenant, shopBelongsToTenant } from '@/utils/tenant'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -13,6 +15,8 @@ interface Props {
 export default async function ServicesPage({ params, searchParams }: Props) {
   const { id: shopId } = await params
   const { barberId } = await searchParams
+  const tenant = await getTenant()
+  if (!(await shopBelongsToTenant(shopId, tenant))) notFound()
 
   if (!barberId) {
     return (
