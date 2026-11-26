@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
+import { safeRedirectPath } from '@/utils/safe-redirect'
 
 const EGYPT_PHONE_REGEX = /^(010|011|012|015)\d{8}$/
 
@@ -30,6 +31,15 @@ function getSignupErrorCode(error: { message?: string; code?: string; status?: n
   return 'signup_failed'
 }
 
+function authUrl(path: '/login' | '/register', formData: FormData, error?: string) {
+  const params = new URLSearchParams()
+  const redirectTo = safeRedirectPath(formData.get('redirect'), '')
+  if (redirectTo) params.set('redirect', redirectTo)
+  if (error) params.set('error', error)
+  const qs = params.toString()
+  return qs ? `${path}?${qs}` : path
+}
+
 export async function login(formData: FormData) {
   const supabase = await createClient()
 
@@ -48,17 +58,11 @@ export async function login(formData: FormData) {
     // Log the real reason server-side; the UI keeps the generic message
     // so we don't leak which part (email vs password) was wrong.
     console.error('Login failed:', error.code ?? error.status, error.message)
-    const redirectTo = formData.get('redirect') as string | null
-    if (redirectTo) {
-      redirect(`/login?redirect=${encodeURIComponent(redirectTo)}&error=invalid_credentials`)
-    } else {
-      redirect('/login?error=invalid_credentials')
-    }
+    redirect(authUrl('/login', formData, 'invalid_credentials'))
   }
 
   revalidatePath('/', 'layout')
-  const redirectTo = formData.get('redirect') as string | null
-  redirect(redirectTo || '/')
+  redirect(safeRedirectPath(formData.get('redirect'), '/'))
 }
 
 export async function signup(formData: FormData) {
@@ -70,16 +74,16 @@ export async function signup(formData: FormData) {
   const phone = (formData.get('phone') as string)?.trim()
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    redirect('/register?error=invalid_email')
+    redirect(authUrl('/register', formData, 'invalid_email'))
   }
   if (!password || password.length < 8) {
-    redirect('/register?error=weak_password')
+    redirect(authUrl('/register', formData, 'weak_password'))
   }
   if (!fullName || fullName.length < 2) {
-    redirect('/register?error=invalid_name')
+    redirect(authUrl('/register', formData, 'invalid_name'))
   }
   if (!phone || !EGYPT_PHONE_REGEX.test(phone)) {
-    redirect('/register?error=invalid_phone')
+    redirect(authUrl('/register', formData, 'invalid_phone'))
   }
 
   const { error, data: authData } = await supabase.auth.signUp({
@@ -92,7 +96,7 @@ export async function signup(formData: FormData) {
 
   if (error) {
     console.error('Signup failed:', error)
-    redirect(`/register?error=${getSignupErrorCode(error)}`)
+    redirect(authUrl('/register', formData, getSignupErrorCode(error)))
   }
 
   if (authData.user) {
@@ -106,18 +110,12 @@ export async function signup(formData: FormData) {
 
     if (profileError) {
       console.error('Profile insert failed:', profileError)
-      const redirectTo = formData.get('redirect') as string | null
-      if (redirectTo) {
-        redirect(`/register?redirect=${encodeURIComponent(redirectTo)}&error=profile_failed`)
-      } else {
-        redirect('/register?error=profile_failed')
-      }
+      redirect(authUrl('/register', formData, 'profile_failed'))
     }
   }
 
   revalidatePath('/', 'layout')
-  const redirectTo = formData.get('redirect') as string | null
-  redirect(redirectTo || '/')
+  redirect(safeRedirectPath(formData.get('redirect'), '/'))
 }
 
 export async function signOut() {

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { safeRedirectPath } from '@/utils/safe-redirect'
 
 // Routes that require authentication
 const PROTECTED_ROUTES = ['/booking', '/profile']
@@ -65,9 +66,11 @@ export async function updateSession(request: NextRequest, extraHeaders?: Headers
   // Redirect authenticated users away from login/register
   const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r))
   if (user && isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
+    // Honor ?redirect=... (e.g. the booking continuation) instead of dropping
+    // the user on the landing page. Also covers the server-action POST to
+    // /login or /register when a session already exists.
+    const target = safeRedirectPath(request.nextUrl.searchParams.get('redirect'), '/')
+    return NextResponse.redirect(new URL(target, request.url), 303)
   }
 
   return supabaseResponse
