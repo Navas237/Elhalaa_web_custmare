@@ -4,6 +4,9 @@ import { updateSession } from '@/utils/supabase/middleware'
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000'
 const RESERVED = new Set(['app', 'admin', 'hq-7m4x', 'api', 'mail'])
 
+// Public legal pages, served on the root domain only.
+const LEGAL_PATHS = new Set(['/privacy', '/terms'])
+
 // ?tenant=<name> is a test hook. It is off on the production deployment.
 const ALLOW_TENANT_QUERY = process.env.VERCEL_ENV
   ? process.env.VERCEL_ENV !== 'production'
@@ -48,7 +51,7 @@ export async function proxy(request: NextRequest) {
       url.pathname = '/site'
       return NextResponse.rewrite(url)
     }
-    if (pathname === '/site' || pathname.startsWith('/_next') ) {
+    if (pathname === '/site' || LEGAL_PATHS.has(pathname) || pathname.startsWith('/_next') ) {
       return NextResponse.next()
     }
     const url = request.nextUrl.clone()
@@ -58,7 +61,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Shop subdomain: the landing route must not be reachable here.
-  if (pathname === '/site') {
+  if (pathname === '/site' || LEGAL_PATHS.has(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
