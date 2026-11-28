@@ -1,5 +1,6 @@
 import { login } from './actions'
 import { SubmitButton } from './SubmitButton'
+import GoogleSignInButton from '../GoogleSignInButton'
 import Link from 'next/link'
 import { Scissors } from 'lucide-react'
 
@@ -104,6 +105,13 @@ export default async function LoginPage({ searchParams }: Props) {
 
           <SubmitButton label="دخول" pendingLabel="جاري الدخول..." />
         </form>
+
+        <div className="my-5 flex items-center gap-3 text-xs" style={{ color: 'var(--color-gray-600)' }}>
+          <span className="h-px flex-1" style={{ backgroundColor: 'var(--color-gray-200)' }} />
+          أو
+          <span className="h-px flex-1" style={{ backgroundColor: 'var(--color-gray-200)' }} />
+        </div>
+        <GoogleSignInButton redirectTo={redirectTo} />
 
         <div className="mt-6 text-center text-sm" style={{ color: 'var(--color-gray-600)' }}>
           ليس لديك حساب؟{' '}

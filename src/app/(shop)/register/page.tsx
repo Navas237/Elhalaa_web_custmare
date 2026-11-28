@@ -1,5 +1,6 @@
 import { signup } from '../login/actions'
 import { SubmitButton } from '../login/SubmitButton'
+import GoogleSignInButton from '../GoogleSignInButton'
 import Link from 'next/link'
 import { Scissors } from 'lucide-react'
 
@@ -100,6 +101,13 @@ export default async function RegisterPage({ searchParams }: Props) {
 
           <SubmitButton label="إنشاء حساب" pendingLabel="جاري إنشاء الحساب..." />
         </form>
+
+        <div className="my-5 flex items-center gap-3 text-xs" style={{ color: 'var(--color-gray-600)' }}>
+          <span className="h-px flex-1" style={{ backgroundColor: 'var(--color-gray-200)' }} />
+          أو
+          <span className="h-px flex-1" style={{ backgroundColor: 'var(--color-gray-200)' }} />
+        </div>
+        <GoogleSignInButton redirectTo={redirectTo} />
 
         <div className="mt-6 text-center text-sm" style={{ color: 'var(--color-gray-600)' }}>
           لديك حساب بالفعل؟{' '}

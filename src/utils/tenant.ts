@@ -2,6 +2,7 @@ import { createPublicClient } from '@/utils/supabase/public'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
+import { RESERVED_SUBDOMAINS } from '@/utils/google-auth'
 
 export interface TenantBranding {
   logo_url: string | null
@@ -46,9 +47,7 @@ export const DEFAULT_TENANT: Tenant = {
  * Reserved hostnames. They are never tenants, and a shop can not claim them.
  * Keep in sync with the dashboard proxy and with the DB check when tenants are created.
  */
-export const RESERVED_SUBDOMAINS = new Set([
-  'www', 'app', 'admin', 'hq-7m4x', 'api', 'mail', 'default',
-])
+export { RESERVED_SUBDOMAINS }
 
 /**
  * Resolve the active tenant from the host (x-tenant-subdomain, set by the proxy).

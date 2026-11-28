@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/utils/supabase/middleware'
+import { AUTH_PATH, AUTH_SUBDOMAIN } from '@/utils/google-auth'
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000'
 const RESERVED = new Set(['app', 'admin', 'hq-7m4x', 'api', 'mail'])
@@ -39,6 +40,19 @@ export async function proxy(request: NextRequest) {
   const subdomain = extractSubdomain(request)
   const { pathname } = request.nextUrl
 
+  // Auth host: serves only the Google sign-in popup page. Never a shop, no session work.
+  if (subdomain === AUTH_SUBDOMAIN) {
+    if (pathname === AUTH_PATH) {
+      const res = NextResponse.next()
+      res.headers.set('Cache-Control', 'no-store')
+      res.headers.set('Content-Security-Policy', "frame-ancestors 'none'")
+      res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+      return res
+    }
+    if (pathname.startsWith('/_next')) return NextResponse.next()
+    return new NextResponse('Not found', { status: 404 })
+  }
+
   // Dashboard and platform admin hosts are served by the dashboard project, never here.
   if (subdomain && RESERVED.has(subdomain)) {
     return new NextResponse('Not found', { status: 404 })
@@ -61,7 +75,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Shop subdomain: the landing route must not be reachable here.
-  if (pathname === '/site' || LEGAL_PATHS.has(pathname)) {
+  if (pathname === '/site' || pathname === AUTH_PATH || LEGAL_PATHS.has(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
